@@ -1,120 +1,160 @@
 <template>
-  <div id="app">
-    <section>
-      <span class="title-text">Blog gRPC Client</span>
-      <div class="row justify-content-center mt-4">
-        <input v-model="inputTitle" class="mr-1" placeholder="Blog Title">
-        <input v-model="inputContent" class="mr-1" placeholder="Blog Content">
-        <input v-model="inputAuthor" class="mr-1" placeholder="Blog Author">
-        <button @click="AddBlog" class="btn btn-primary">Add Blog</button>
-      </div>
-    </section>
-    <section>
-      <div class="row">
-        <div class="offset-md-3 col-md-6 mt-3">
-          <ul class="list-group justify-content-center">
-            <li
-              class="row list-group-item border mt-2 col-xs-1"
-              v-for="blog in blogs"
-              v-bind:key="blog._id"
-            >
-              <div>
-                <span>{{blog}}</span>
-                 <span @click="DeleteBlog(blog)" class="offset-sm-1 col-sm-2 delete text-right">X</span>
-              </div>
-            </li>
-          </ul>
+<div id="app">
+    <!-- <section> -->
+    <span class="title-text">Blog gRPC Client</span>
+    <!-- AddForm.vue component -->
+    <add-form></add-form>
+    <section class="mt-5">
+        <!-- This seems hacky :), maybe lets find a better way? -->
+        <div class="row mb-5" v-for="i in Math.ceil(blogs.length / 3)">
+            <ul class="list-group list-group-horizontal mr-5">
+                <li class="row list-group-item border ml-5" v-for="blog in blogs.slice((i-1) * 3, i * 3)" v-bind:key="blog._id">
+                    <div class="row justify-content-center">
+                        <h1>{{blog.Title}}</h1>
+                    </div>
+                    <div class="row justify-content-center">
+                        <span class="author">{{blog.AuthorId}} • </span>
+                        <span class="author ml-1">{{blog.CreatedTime}}</span>
+                    </div>
+                    <div class="row justify-content-center mt-4">
+                        <p>{{blog.Content}}
+                        </p>
+                    </div>
+                    <div class="row justify-content-center mt-4">
+                        <button @click="DeleteBlog(blog)" class="btn btn-danger">Delete Blog</button>
+                    </div>
+                </li>
+            </ul>
         </div>
-      </div>
     </section>
-  </div>
+    <!-- CustomFooter.vue component -->
+    <custom-footer></custom-footer>
+    <!-- end footer -->
+</div>
 </template>
 
 <script>
-import { ListBlogRequest, ReadBlogResponse, CreateBlogRequest, CreateBlogResponse, DeleteBlogRequest, Blog } from "../node_modules/blogpb/blog_pb";
-import { BlogServiceClient } from "../node_modules/blogpb/blog_grpc_web_pb";
+const isDev = false;
+import {
+    ListBlogRequest,
+    ReadBlogResponse,
+    CreateBlogRequest,
+    CreateBlogResponse,
+    DeleteBlogRequest,
+    Blog
+} from "../blogpb/blog_pb";
+import {
+    BlogServiceClient
+} from "../blogpb/blog_grpc_web_pb";
 import "bootstrap/dist/css/bootstrap.css";
 import "bootstrap-vue/dist/bootstrap-vue.css";
 
 export default {
-  name: "app",
-  components: {},
-  data: function() {
-    return {
-      inputTitle: "",
-      inputAuthor: "",
-      inputContent: "",
-      blogs: []
-    };
-  },
-  created: function() {
-    this.client = new BlogServiceClient("http://localhost:8080", null, null);
-    //this.AddBlog();
-    this.ListBlog();
-  },
-  methods: {
-    ListBlog: function(id) {
-      let getRequest = new ListBlogRequest();
-      let stream = this.client.listBlog(getRequest, {});//, (err, response) => {
-      //   let resBlogs = response.getBlog();
-      //   const blog = {_Id: resBlogs.getId(), Title: resBlogs.getTitle(), Content: resBlogs.getContent(), AuthorId: resBlogs.getAuthorId()};
-      //   this.blogs.push(blog);
-
-      //   console.log(resBlogs.getId());
-      //   console.log(resBlogs.getTitle());
-      //   console.log(resBlogs.getContent());
-      //   console.log(resBlogs.getAuthorId());
-
-      //   console.log(err);
-      // });
-      this.blogs = [];
-      let blogs = this.blogs;
-      stream.on('data', function(response){
-        let resBlogs = response.getBlog();
-        const blog = {_Id: resBlogs.getId(), Title: resBlogs.getTitle(), Content: resBlogs.getContent(), AuthorId: resBlogs.getAuthorId()};
-        blogs.push(blog);
-      });
-      stream.on('end', function(end) {
-        console.log("END OF STREAM!");
-      });
+    name: "app",
+    components: {},
+    data: function () {
+        return {
+            blogs: []
+        };
     },
-    AddBlog: function() {
-      let request = new CreateBlogRequest();
-      let blog = new Blog();    //{id: "test", AuthorId: "Matt Test", Title: "Matt Test", Content: "Matt Test"}
-      blog.setAuthorId(this.inputAuthor);
-      blog.setTitle(this.inputTitle);
-      blog.setContent(this.inputContent);
-
-      request.setBlog(blog);
-
-      this.client.createBlog(request, {}, (err, response) => {
+    created: function () {
+        this.client = new BlogServiceClient("http://localhost:8080", null, null);
         this.ListBlog();
-        console.log(response.getBlog().getId());
-      });
     },
-    DeleteBlog: function(blog) {
-      let deleteRequest = new DeleteBlogRequest();
-      deleteRequest.setBlogId(blog._Id);
-      this.client.deleteBlog(deleteRequest, {}, (err, response) => {
-          this.ListBlog();
-      });
-      console.log("blog -> ", blog._Id);
+    methods: {
+        ListBlog: function () {
+            if (!isDev) {
+                let getRequest = new ListBlogRequest();
+                let stream = this.client.listBlog(getRequest, {});
+                this.blogs = [];
+                let blogs = this.blogs;
+                stream.on('error', function(err){
+                    alert("Error loading blogs: " + err["message"]);
+                });
+                stream.on('data', function (response) {
+                    let resBlogs = response.getBlog();
+                    const protoTimeStamp = resBlogs.getCreatedTime();
+                    let jsDate = protoTimeStamp.toDate();
+                    jsDate = jsDate.toLocaleString();
+
+                    const blog = {  // todo: Can we add an image to this and store in MongoDB?
+                        _Id: resBlogs.getId(),
+                        Title: resBlogs.getTitle(),
+                        Content: resBlogs.getContent(),
+                        AuthorId: resBlogs.getAuthorId(),
+                        CreatedTime: jsDate
+                    };
+                    blogs.push(blog);
+                });
+                stream.on('end', function (end) {
+                    console.log("END OF STREAM!");
+                });
+            } else {
+                for (var i = 0; i < 12; i++) {  // Dev mode, append 12 fake records to see layout.
+                    const blog = {
+                        _Id: "TESTID",
+                        Title: "Matt Test Title",
+                        Content: "Matt testing content 123 123 123 Test 1234",
+                        AuthorId: "Matthew DeMaio",
+                        CreatedTime: "8/12/2020, 12:09:01 PM"
+                    };
+                    this.blogs.push(blog);
+                }
+            }
+        },
+        DeleteBlog: function (blog) {
+            let deleteRequest = new DeleteBlogRequest();
+            deleteRequest.setBlogId("blog._Id");
+            this.client.deleteBlog(deleteRequest, {}, (err, response) => {
+                if(err){
+                    alert("Failed to delete record: " + err["message"]);
+                    return;
+                }
+                this.ListBlog();
+            });
+            console.log("blog -> ", blog._Id);
+        }
     }
-  }
 };
 </script>
 
 <style>
 #app {
-  font-family: "Avenir", Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: #2c3e50;
-  margin-top: 60px;
+    font-family: "Avenir", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-align: center;
+    color: #2c3e50;
+    height: 100%;
+    min-height: 100%;
+    position: relative;
 }
 
 .title-text {
-  font-size: 22px;
+    font-size: 35px;
+}
+
+.author {
+    font-style: italic;
+}
+
+ul>li {
+    width: 30%;
+    list-style: none;
+    display: block;
+    float: left;
+}
+
+ul {
+    width: 100%;
+}
+
+body {
+    margin: 0px;
+}
+
+html,
+body {
+    height: 100%;
 }
 </style>
